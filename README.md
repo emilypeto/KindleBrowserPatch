@@ -12,6 +12,8 @@ Known working devices:
 - KS (Winterbreak, 5.17.3)
 - PW4 (Winterbreak, 5.17.1.0.3)
 
+Known NOT WORKING devices:
+- PW5 (WinterBreak, 5.17.0, Paperwhite SE 12th Gen)
 ## Installation
 Prerequisites:
 - Jailbreak with root

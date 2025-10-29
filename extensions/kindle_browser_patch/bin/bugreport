@@ -1,0 +1,9 @@
+#!/bin/sh
+mkdir /mnt/us/bugreport
+cp -r /usr/bin/chromium /mnt/us/bugreport
+cp /usr/bin/browser /mnt/us/bugreport
+cp /var/local/appreg.db /mnt/us/bugreport
+cp /mnt/us/extensions/kindle_browser_patch/kindle_browser_patch.log /mnt/us/bugreport
+tar czf /mnt/us/bugreport.tar.gz /mnt/us/bugreport
+rm -r /mnt/us/bugreport
+

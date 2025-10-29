@@ -36,7 +36,7 @@ If the above are true, then follow these steps:
 2. Don't touch anything, and wait for 10 minutes. It will take a while to generate the report in the background.
 3. Plug your Kindle into your computer, and transfer `bugreport.tar.gz` from the root of its storage to your computer. You may delete the file from your Kindle after it has been copied over.
 4. Upload it to an external file host such as Dropbox or Google Drive
-5. Create an issue with the following information
+5. Create an issue with the following information:
 - Your [device nickname](https://wiki.mobileread.com/wiki/Kindle_Serial_Numbers) such as `PW5` or `KOA2`
 - Your device firmware, which can be found in Kindle settings --> 3 dot menu --> Device info
 - A link to a `bugreport.tar.gz`

@@ -26,6 +26,7 @@ Method:
 5. If you successfully installed it, and you wish to uninstall, you MUST do so through the KUAL menu first. Do not simply delete the files off your device, or you will be left without a functional browser until you put the files back on and uninstall.
 
 ## Troubleshooting
+### If it won't install
 First, check the following:
 - Your device is on firmware >= 5.16.4 (Kindle settings --> 3 dot menu --> Device info)
 - You followed the above steps correctly, especially the part about waiting 3 minutes without touching anything after pressing install
@@ -51,6 +52,9 @@ rm -r /mnt/us/bugreport
 - A link to a `bugreport.tar.gz`
 
 In most cases, given this information, I'll be able to adjust the code to work for your device.
+
+### If you removed the files without properly uninstalling
+Put the files back on your device, then create an empty file named `installed` at `extensions/kindle_browser_patch/installed`
 
 ## Compiling
 Build [koxtoolchain](https://github.com/koreader/koxtoolchain) for the `kindlehf` platform, then compile `kindle_browser_patch.c` using `~/x-tools/arm-kindlehf-linux-gnueabihf/bin/arm-kindlehf-linux-gnueabihf-gcc`

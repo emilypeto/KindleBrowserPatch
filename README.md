@@ -34,7 +34,7 @@ First, check the following:
 If the above are true, then follow these steps:
 1. Open KindleBrowserPatch from the KUAL menu and press `Bug Report`
 2. Don't touch anything, and wait for 10 minutes. It will take a while to generate the report in the background.
-3. Plug your Kindle into your computer, and transfer `bugreport.tar.gz` to your computer. You may delete the file from your Kindle after it has been copied over.
+3. Plug your Kindle into your computer, and transfer `bugreport.tar.gz` from the root of its storage to your computer. You may delete the file from your Kindle after it has been copied over.
 4. Upload it to an external file host such as Dropbox or Google Drive
 5. Create an issue with the following information
 - Your [device nickname](https://wiki.mobileread.com/wiki/Kindle_Serial_Numbers) such as `PW5` or `KOA2`

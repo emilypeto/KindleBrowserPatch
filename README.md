@@ -7,11 +7,11 @@ It likely works on all Kindle devices running firmware >= 5.16.4. In any case, t
 
 Known working devices:
 - PW6 (5.18.1)
-- PW5 (WinterBreak, 5.17.0)
-- KT5 (WinterBreak, 5.17.1.0.3)
-- KOA3 (WinterBreak, 5.17.1.0.3)
-- KS (WinterBreak, 5.17.3)
-- PW4 (WinterBreak, 5.17.1.0.3)
+- PW5 (5.17.0)
+- KT5 (5.17.1.0.3)
+- KOA3 (5.17.1.0.3)
+- KS (5.17.3)
+- PW4 (5.17.1.0.3)
 
 ## Installation
 Prerequisites:
@@ -32,22 +32,12 @@ First, check the following:
 - You followed the above steps correctly, especially the part about waiting 3 minutes without touching anything after pressing install
 
 If the above are true, then follow these steps:
-1. If you don't already have kterm installed, [download the latest armhf release](https://github.com/bfabiszewski/kterm/releases) and install it to the extensions folder on your Kindle
-2. Open kterm from the KUAL menu on your Kindle, and type the following commands. Some of them may take a couple minutes to complete.
-```
-mkdir /mnt/us/bugreport
-cp -r /usr/bin/chromium /mnt/us/bugreport
-cp /usr/bin/browser /mnt/us/bugreport
-cp /var/local/appreg.db /mnt/us/bugreport
-cp /mnt/us/extensions/kindle_browser_patch/kindle_browser_patch.log /mnt/us/bugreport
-tar czf /mnt/us/bugreport.tar.gz /mnt/us/bugreport
-rm -r /mnt/us/bugreport
-```
+1. Open KindleBrowserPatch from the KUAL menu and press `Bug Report`
+2. Don't touch anything, and wait for 10 minutes. It will take a while to generate the report in the background.
 3. Plug your Kindle into your computer, and transfer `bugreport.tar.gz` to your computer. You may delete the file from your Kindle after it has been copied over.
 4. Upload it to an external file host such as Dropbox or Google Drive
 5. Create an issue with the following information
 - Your [device nickname](https://wiki.mobileread.com/wiki/Kindle_Serial_Numbers) such as `PW5` or `KOA2`
-- The jailbreak you used, such as `WinterBreak` or `AdBreak`
 - Your device firmware, which can be found in Kindle settings --> 3 dot menu --> Device info
 - A link to a `bugreport.tar.gz`
 
@@ -57,7 +47,8 @@ In most cases, given this information, I'll be able to adjust the code to work f
 Put the files back on your device, then create an empty file named `installed` at `extensions/kindle_browser_patch/installed`
 
 ## Compiling
-Build [koxtoolchain](https://github.com/koreader/koxtoolchain) for the `kindlehf` platform, then compile `kindle_browser_patch.c` using `~/x-tools/arm-kindlehf-linux-gnueabihf/bin/arm-kindlehf-linux-gnueabihf-gcc`
+Build [koxtoolchain](https://github.com/koreader/koxtoolchain) for the `kindlehf` platform, then compile `kindle_browser_patch.c` using `~/x-tools/arm-kindlehf-linux-gnueabihf/bin/arm-kindlehf-linux-gnueabihf-gcc`. Place the compiled binary in `extensions/kindle_browser_patch/bin`.
 
 ## Technical explanation
 Please visit [https://www.mobileread.com/forums/showthread.php?p=4495677#post4495677](https://www.mobileread.com/forums/showthread.php?p=4495677#post4495677).
+

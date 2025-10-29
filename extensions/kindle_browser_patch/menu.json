@@ -12,8 +12,14 @@
 		},
 		{
             "name": "Uninstall", 
-            "priority": 2, 
+            "priority": -998, 
             "action": "bin/kindle_browser_patch uninstall",
+            "exitmenu": true
+		},
+		{
+            "name": "Bug Report", 
+            "priority": -999, 
+            "action": "bin/bugreport",
             "exitmenu": true
 		}
 		]

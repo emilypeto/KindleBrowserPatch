@@ -205,10 +205,16 @@ static int do_install(const char *searchengine) {
         return -1;
     }
 
-    /* Update appreg.db to use patched browser */
-    if (run_command("sqlite3 /var/local/appreg.db \"UPDATE properties SET value='/mnt/us/extensions/kindle_browser_patch/patched_bin/browser -j' WHERE handlerId='com.lab126.browser' AND name='command';\"") != 0) {
-        return -1;
-    }
+    /* Update appreg.db to use patched browser, guarding against cases where there's an unfamiliar value already present (might happen on new firmware if the browser substantially changes) */
+    if (run_command(
+    "sqlite3 /var/local/appreg.db \"UPDATE properties "
+    "SET value='/mnt/us/extensions/kindle_browser_patch/patched_bin/browser -j' "
+    "WHERE handlerId='com.lab126.browser' AND name='command' "
+    "AND (value='/usr/bin/browser -j' OR value='/mnt/us/extensions/kindle_browser_patch/patched_bin/browser -j');\""
+) != 0) {
+    log_message("Unexpected value in appreg.db");
+    return -1;
+}
 
     /* Start browser */
     if (run_command("lipc-set-prop com.lab126.appmgrd start app://com.lab126.browser") != 0) {
@@ -224,8 +230,14 @@ static int do_uninstall(void) {
     
     int retcode = 0;
     
-    /* Reset DB value to original */
-    if (run_command("sqlite3 /var/local/appreg.db \"UPDATE properties SET value='/usr/bin/browser -j' WHERE handlerId='com.lab126.browser' AND name='command';\"") != 0) {
+    /* Reset DB value to original, guarding against cases where there's an unfamiliar value already present (might happen on new firmware if the browser substantially changes) */
+    if (run_command(
+        "sqlite3 /var/local/appreg.db \"UPDATE properties "
+        "SET value='/usr/bin/browser -j' "
+        "WHERE handlerId='com.lab126.browser' AND name='command' "
+        "AND (value='/usr/bin/browser -j' OR value='/mnt/us/extensions/kindle_browser_patch/patched_bin/browser -j');\""
+    ) != 0) {
+        log_message("Unexpected value in appreg.db");
         retcode = -1;
     }
 

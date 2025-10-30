@@ -21,7 +21,7 @@ Prerequisites:
 
 Method:
 1. Download the [latest release](https://github.com/emilypeto/KindleBrowserPatch/releases/download/v2.0.0/kindle_browser_patch-2.0.0-armhf.zip) and extract it to `/mnt/us/extensions` on your Kindle, such that you now have a folder at `/mnt/us/extensions/kindle_browser_patch`. It must be named exactly this or it won't install.
-2. Open KUAL and select Kindle Browser Patch --> Install, selecting the search engine of your choice
+2. Open KUAL and select Kindle Browser Patch --> Install, selecting the search engine of your choice.
 3. Don't touch anything while it installs. You will see log messages at the top of the screen.
 4. If the patch succeeds, the browser will open and you can test it out. Otherwise, you will see a message saying `Failed to install` at the top of the screen. If this is the case, proceed to the Troubleshooting section below. There is no harm to your device.
 5. If you successfully installed it, and you wish to uninstall, you MUST do so through the KUAL menu first. Do not simply delete the files off your device, or you will be left without a functional browser until you put the files back on and uninstall.

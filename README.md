@@ -43,5 +43,5 @@ If it is, please follow these steps to submit a bug report:
 Build [koxtoolchain](https://github.com/koreader/koxtoolchain) for the `kindlehf` platform, then compile `kindle_browser_patch.c` using `~/x-tools/arm-kindlehf-linux-gnueabihf/bin/arm-kindlehf-linux-gnueabihf-gcc`. Place the compiled binary in `extensions/kindle_browser_patch/bin`.
 
 ## Technical explanation
-Please visit [https://www.mobileread.com/forums/showthread.php?p=4495677#post4495677](https://www.mobileread.com/forums/showthread.php?p=4495677#post4495677).
+Please see [this post](https://www.mobileread.com/forums/showpost.php?p=4495677&postcount=7) and [this post](https://www.mobileread.com/forums/showpost.php?p=4546095&postcount=18) on the MobileRead forums.
 

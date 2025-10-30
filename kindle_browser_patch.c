@@ -1,376 +1,297 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <time.h>
-#include <stdarg.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <errno.h>
+#include <limits.h> // For PATH_MAX
 
-/* Path for the log file */
-#define LOGFILE "/mnt/us/extensions/kindle_browser_patch/kindle_browser_patch.log"
-
-/* Logging function: appends a timestamped message to the log file */
-void log_message(const char *format, ...) {
-    FILE *logf = fopen(LOGFILE, "a");
-    if (!logf) {
-        fprintf(stderr, "Error opening log file %s\n", LOGFILE);
-        return;
-    }
-    time_t now = time(NULL);
+/* ---------------- Logging ---------------- */
+static void log_message(const char *fmt, ...) {
+    char msgbuf[1024];
+    char eips_command[sizeof("eips \"") + sizeof(msgbuf) + sizeof("\"")];
     char timestr[64];
-    strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", localtime(&now));
-    fprintf(logf, "[%s] ", timestr);
+    time_t now = time(NULL);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+    strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", &tm_now);
 
-    va_list args;
-    va_start(args, format);
-    vfprintf(logf, format, args);
-	vprintf(format, args);
-	printf("\n");
-    va_end(args);
-    fprintf(logf, "\n");
-    fclose(logf);
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msgbuf, sizeof(msgbuf), fmt, ap);
+    va_end(ap);
+
+    printf("[%s] %s\n", timestr, msgbuf);
+    fflush(stdout);
+
+    FILE *logf = fopen("install.log", "a");
+    if (logf) {
+        fprintf(logf, "[%s] %s\n", timestr, msgbuf);
+        fclose(logf);
+    }
+    
+    /* Extra spaces to cover over existing text */
+    snprintf(eips_command, sizeof(eips_command), "eips \"%s                                                                                                                                                                                                                                    \"", msgbuf);
+    system(eips_command);
 }
 
-/* Runs a command using system() and logs its execution.
-   Returns 0 on success, -1 on failure. */
-int run_command(const char *cmd) {
+/* ---------------- Shell command helpers ---------------- */
+static int run_command(const char *cmd) {
     log_message("Running command: %s", cmd);
-    int ret = system(cmd);
-    if (ret != 0) {
-        log_message("Command failed: %s (exit code %d)", cmd, ret);
-        return -1;
-    }
-    log_message("Command succeeded: %s", cmd);
-    return 0;
+    int rc = system(cmd);
+    if (rc != 0) log_message("Command failed (status %d): %s", rc, cmd);
+    return rc;
 }
 
-/* Runs a command and captures its output.
-   The output (first line) is stored in the provided buffer.
-   Returns 0 on success, -1 on failure. */
-int run_command_capture(const char *cmd, char *output, size_t output_size) {
-    log_message("Running command (capture): %s", cmd);
-    FILE *fp = popen(cmd, "r");
-    if (!fp) {
-        log_message("Failed to run command: %s", cmd);
-        return -1;
-    }
-    if (fgets(output, output_size, fp) == NULL) {
-        log_message("No output captured from command: %s", cmd);
-        pclose(fp);
-        return -1;
-    }
-    int ret = pclose(fp);
-    if (ret != 0) {
-        log_message("Command (capture) failed: %s (exit code %d)", cmd, ret);
-        return -1;
-    }
-    /* Remove trailing newline if present */
-    size_t len = strlen(output);
-    if (len > 0 && output[len-1] == '\n') {
-        output[len-1] = '\0';
-    }
-    log_message("Command (capture) succeeded: %s, output: %s", cmd, output);
-    return 0;
-}
-
-/* Applies a binary patch to a file.
-   It opens the file in binary mode, searches for the pattern, and if found exactly once,
-   writes the replacement bytes. Returns 0 on success, -1 on failure. */
-int apply_patch(const char *filepath, const unsigned char *find, const unsigned char *replace, size_t len) {
-    log_message("Applying patch on file %s", filepath);
+/* ---------------- Binary patching ---------------- */
+static int apply_patch(const char *filepath, const unsigned char *find, const unsigned char *replace, size_t len) {
     FILE *f = fopen(filepath, "rb+");
-    if (!f) {
-        log_message("Failed to open file %s: %s", filepath, strerror(errno));
-        return -1;
-    }
+    if (!f) { log_message("Cannot open %s: %s", filepath, strerror(errno)); return -1; }
 
-    /* Determine file size */
-    if (fseek(f, 0, SEEK_END) != 0) {
-        log_message("Failed to seek in file %s", filepath);
-        fclose(f);
-        return -1;
-    }
-    long filesize = ftell(f);
-    if (filesize < 0) {
-        log_message("Failed to get file size for %s", filepath);
-        fclose(f);
-        return -1;
-    }
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
+    long size = ftell(f);
     rewind(f);
-
-    unsigned char *buffer = malloc(filesize);
-    if (!buffer) {
-        log_message("Failed to allocate memory for file %s", filepath);
+    unsigned char *buf = malloc(size);
+    if (buf == NULL) {
+        log_message("Failed to allocate memory for %s: %s", filepath, strerror(errno));
         fclose(f);
         return -1;
     }
-    if (fread(buffer, 1, filesize, f) != (size_t)filesize) {
-        log_message("Failed to read file %s", filepath);
-        free(buffer);
-        fclose(f);
-        return -1;
-    }
-
-    /* Search for pattern occurrences */
-    int count = 0;
-    long pos = -1;
-    for (long i = 0; i <= filesize - (long)len; i++) {
-        if (memcmp(buffer + i, find, len) == 0) {
-            count++;
-            pos = i;
-        }
-    }
-    if (count != 1) {
-        log_message("Pattern found %d times in file %s (expected exactly 1)", count, filepath);
-        free(buffer);
+    
+    if (fread(buf, 1, size, f) != size) {
+        log_message("Failed to read the full contents of %s", filepath);
+        free(buf);
         fclose(f);
         return -1;
     }
 
-    /* Seek to the found position and write the replacement bytes */
+    int count=0; long pos=-1;
+    for (long i=0; i<=size-(long)len; i++)
+        if (memcmp(buf+i, find, len)==0) { count++; pos=i; }
+
+    if (count != 1) { log_message("Pattern occurs %d times in %s", count, filepath); free(buf); fclose(f); return -1; }
+
     if (fseek(f, pos, SEEK_SET) != 0) {
-        log_message("Failed to seek in file %s: %s", filepath, strerror(errno));
-        free(buffer);
+        log_message("Failed to seek in %s: %s", filepath, strerror(errno));
+        free(buf);
         fclose(f);
         return -1;
     }
     if (fwrite(replace, 1, len, f) != len) {
-        log_message("Failed to write patch to file %s: %s", filepath, strerror(errno));
-        free(buffer);
+        log_message("Failed to write patch to %s: %s", filepath, strerror(errno));
+        free(buf);
         fclose(f);
         return -1;
     }
-    log_message("Patch applied successfully at position %ld in file %s", pos, filepath);
-    free(buffer);
     fclose(f);
+    free(buf);
+    log_message("Patch applied to %s at offset %ld", filepath,pos);
     return 0;
 }
 
-/* Prints usage information to stderr */
-void print_usage(const char *progname) {
-    fprintf(stderr, "Usage: %s [install|uninstall]\n", progname);
+/* ---------------- Installation ---------------- */
+static int do_install(const char *searchengine) {
+    log_message("Starting installation");
+
+    /* Clean old logs */
+    run_command("rm -rf /mnt/us/extensions/kindle_browser_patch/install.log");
+
+    /* Ensure patched_bin exists cleanly */
+    run_command("rm -rf /mnt/us/extensions/kindle_browser_patch/patched_bin");
+    
+    if (mkdir("/mnt/us/extensions/kindle_browser_patch/patched_bin", 0755) != 0 && errno != EEXIST) {
+        log_message("Failed to create directory: %s", strerror(errno));
+        return -1;
+    }
+
+    /* Copy the original binaries */
+    if (run_command("cp /usr/bin/browser /mnt/us/extensions/kindle_browser_patch/patched_bin/") != 0) {
+        return -1;
+    }
+    
+    if (run_command("cp -r /usr/bin/chromium /mnt/us/extensions/kindle_browser_patch/patched_bin/") != 0) {
+        return -1;
+    }
+
+    /* Apply the first patch to kindle_browser (handles different models/firmwares) */
+    {
+        log_message("Patching kindle_browser...");
+        
+        const char *kb_path = "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser";
+        int patch_applied = 0;
+
+        /* Variant A */
+        unsigned char findA[]    = { 0x0c, 0x36, 0x0c, 0x35, 0x00, 0x28, 0xe8, 0xd0, 0x01, 0x25, 0x00, 0xE0, 0x00, 0x25 };
+        unsigned char replaceA[] = { 0x0c, 0x36, 0x0c, 0x35, 0x00, 0x28, 0xe8, 0xd0, 0x01, 0x25, 0x00, 0xE0, 0x01, 0x25 };
+        if (sizeof(findA) != sizeof(replaceA)) {
+            log_message("kindle_browser patch A error: patch length does not match original bytes.");
+            return -1;
+        }
+        if (apply_patch(kb_path, findA, replaceA, sizeof(findA)) == 0) {
+            patch_applied = 1;
+            log_message("Applied patch variant A to kindle_browser");
+        }
+
+        /* Variant B (fallback for another firmware) */
+        if (!patch_applied) {
+            unsigned char findB[]    = { 0x0c, 0x36, 0x0c, 0x34, 0x00, 0x28, 0xea, 0xd0, 0x01, 0x24, 0x00, 0xe0, 0x00, 0x24 };
+            unsigned char replaceB[] = { 0x0c, 0x36, 0x0c, 0x34, 0x00, 0x28, 0xea, 0xd0, 0x01, 0x24, 0x00, 0xe0, 0x01, 0x24 };
+            if (sizeof(findB) != sizeof(replaceB)) {
+                log_message("kindle_browser patch B error: patch length does not match original bytes.");
+                return -1;
+            }
+            if (apply_patch(kb_path, findB, replaceB, sizeof(findB)) == 0) {
+                patch_applied = 1;
+                log_message("Applied patch variant B to kindle_browser");
+            }
+        }
+
+        if (!patch_applied) {
+            log_message("Failed to apply any patch variant to kindle_browser, aborting install");
+            return -1;
+        }
+    }
+
+    /* Patch libchromium.so */
+    {
+        log_message("Patching libchromium.so...");
+        
+        unsigned char find[] = { 0x02, 0x46, 0x20, 0x46, 0x29, 0x46, 0xff, 0xf7, 0xda, 0xff, 0x08, 0xb1 };
+        unsigned char replace[] = { 0x02, 0x46, 0x20, 0x46, 0x29, 0x46, 0xff, 0xf7, 0xda, 0xff, 0x00, 0xbf };
+        if (sizeof(find) != sizeof(replace)) {
+            log_message("libchromium.so patch error: patch length does not match original bytes.");
+            return -1;
+        }
+        if(apply_patch("/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/libchromium.so", find, replace, sizeof(find)) != 0) {
+            log_message("Failed to apply patch to libchromium.so, aborting install");
+            return -1;
+        }
+    }
+
+    /* Optionally patch kindle_browser to replace Google with other search engine */
+    if (searchengine) {
+        log_message("Patching search engine...");
+        const char *find_str = "https://www.google.com/search?q=";
+        const char *replace_str = NULL;
+        /* Add extra slashes to https:// to pad length, making the string an equal length to the original */
+        if (strcmp(searchengine,"duckduckgo")==0) replace_str="https:////www.duckduckgo.com/?q=";
+        else if (strcmp(searchengine,"frogfind")==0) replace_str="http:///////www.frogfind.com/?q=";
+        else if (strcmp(searchengine,"bing")==0) replace_str="https:////www.bing.com/search?q=";
+        if (replace_str) {
+            if (strlen(replace_str) != strlen(find_str)) {
+                log_message("Search engine patch error: replacement string length does not match original.");
+                return -1;
+            }
+            if (apply_patch("/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser",
+                        (unsigned char*)find_str,
+                        (unsigned char*)replace_str,
+                        strlen("https://www.google.com/search?q=")) != 0) {
+                log_message("Failed to patch search engine, aborting install");
+                return -1;
+            }
+        }
+    }
+
+    /* Update the /browser script to exec the patched kindle_browser (which doesn't work in a chroot) */
+    if (run_command("sed -i 's|chroot /chroot ||g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
+        return -1;
+    }
+    
+    if (run_command("sed -i 's|/usr/bin/chromium/bin/kindle_browser|"
+                    "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser|g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
+        return -1;
+    }
+
+    /* Update appreg.db to use patched browser */
+    if (run_command("sqlite3 /var/local/appreg.db \"UPDATE properties SET value='/mnt/us/extensions/kindle_browser_patch/patched_bin/browser -j' WHERE handlerId='com.lab126.browser' AND name='command';\"") != 0) {
+        return -1;
+    }
+
+    /* Start browser */
+    if (run_command("lipc-set-prop com.lab126.appmgrd start app://com.lab126.browser") != 0) {
+        return -1;
+    }
+    
+    return 0;
 }
 
+/* ---------------- Uninstallation ---------------- */
+static int do_uninstall(void) {
+    log_message("Starting uninstallation");
+    
+    int retcode = 0;
+    
+    /* Reset DB value to original */
+    if (run_command("sqlite3 /var/local/appreg.db \"UPDATE properties SET value='/usr/bin/browser -j' WHERE handlerId='com.lab126.browser' AND name='command';\"") != 0) {
+        retcode = -1;
+    }
+
+    /* Remove patched binaries */
+    if (run_command("rm -rf /mnt/us/extensions/kindle_browser_patch/patched_bin") != 0) {
+        retcode = -1;
+    }
+
+    return retcode;
+}
+
+/* ---------------- Main ---------------- */
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        print_usage(argv[0]);
-        return EXIT_FAILURE;
+    if (argc < 2) { fprintf(stderr,"Usage: %s install [searchengine] | uninstall\n",argv[0]); return 1; }
+    /* Ensure that our binary is located at the correct path, meaning the extension was installed to the correct directory */
+    char actual_path[PATH_MAX];
+    ssize_t len;
+    
+    /* Get the absolute path of the running executable using /proc/self/exe */
+    len = readlink("/proc/self/exe", actual_path, sizeof(actual_path) - 1);
+
+    if (len == -1) {
+        /* Handle error: Could not read the symbolic link (unlikely on standard Linux) */
+        perror("Error reading executable path from /proc/self/exe");
+        return -1;
     }
 
-    if (strcmp(argv[1], "install") == 0) {
-        log_message("Starting installation process");
+    /* Null-terminate the string read by readlink */
+    actual_path[len] = '\0';
 
-        /* 1. Delete everything in the folder /mnt/us/extensions/kindle_browser_patch/patched_bin (delete and re-create) */
-        if (run_command("rm -rf /mnt/us/extensions/kindle_browser_patch/patched_bin") != 0) {
-            log_message("Failed to remove /mnt/us/extensions/kindle_browser_patch/patched_bin");
-            return EXIT_FAILURE;
-        }
-        if (mkdir("/mnt/us/extensions/kindle_browser_patch/patched_bin", 0755) != 0) {
-            log_message("Failed to create /mnt/us/extensions/kindle_browser_patch/patched_bin: %s", strerror(errno));
-            return EXIT_FAILURE;
-        }
-        log_message("Cleared and recreated /mnt/us/extensions/kindle_browser_patch/patched_bin");
-
-        /* 2. Copy /usr/bin/browser to /mnt/us/extensions/kindle_browser_patch/patched_bin */
-        if (run_command("cp /usr/bin/browser /mnt/us/extensions/kindle_browser_patch/patched_bin/") != 0) {
-            log_message("Failed to copy /usr/bin/browser to /mnt/us/extensions/kindle_browser_patch/patched_bin");
-            return EXIT_FAILURE;
-        }
-
-        /* 3. Copy /usr/bin/chromium folder to /mnt/us/extensions/kindle_browser_patch/patched_bin */
-        if (run_command("cp -r /usr/bin/chromium /mnt/us/extensions/kindle_browser_patch/patched_bin/") != 0) {
-            log_message("Failed to copy /usr/bin/chromium to /mnt/us/extensions/kindle_browser_patch/patched_bin");
-            return EXIT_FAILURE;
-        }
-
-        /* 4. Apply binary patches */
-        const char *kindle_browser_path = "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser";
-        {
-			/* We use different variants of this patch for different models and firmware versions */
-			
-			int patch1a_success = 1;
-			
-            unsigned char patch1a_find[]    = { 0x0c, 0x36, 0x0c, 0x35, 0x00, 0x28, 0xe8, 0xd0, 0x01, 0x25, 0x00, 0xE0, 0x00, 0x25 };
-            unsigned char patch1a_replace[] = { 0x0c, 0x36, 0x0c, 0x35, 0x00, 0x28, 0xe8, 0xd0, 0x01, 0x25, 0x00, 0xE0, 0x01, 0x25 };
-			
-			if (sizeof(patch1a_find) != sizeof(patch1a_replace)) {
-				log_message("Failed to apply patch1a, patch_find and patch_replace must be the same size");
-				patch1a_success = 0;
-			}
-			else if (apply_patch(kindle_browser_path, patch1a_find, patch1a_replace, sizeof(patch1a_find)) != 0) {
-                log_message("Failed to apply patch1a");
-				patch1a_success = 0;
-            }
-			
-			if (patch1a_success == 0) {
-				/* Colorsoft 5.18.0.1 */
-				int patch1b_success = 1;
-				
-				unsigned char patch1b_find[]    = { 0x0c, 0x36, 0x0c, 0x34, 0x00, 0x28, 0xea, 0xd0, 0x01, 0x24, 0x00, 0xe0, 0x00, 0x24 };
-				unsigned char patch1b_replace[] = { 0x0c, 0x36, 0x0c, 0x34, 0x00, 0x28, 0xea, 0xd0, 0x01, 0x24, 0x00, 0xe0, 0x01, 0x24 };
-				
-				if (sizeof(patch1b_find) != sizeof(patch1b_replace)) {
-					log_message("Failed to apply patch1b, patch_find and patch_replace must be the same size");
-					patch1b_success = 0;
-				}
-				else if (apply_patch(kindle_browser_path, patch1b_find, patch1b_replace, sizeof(patch1b_find)) != 0) {
-					log_message("Failed to apply patch1b");
-					patch1b_success = 0;
-				}
-				
-				if (patch1b_success == 0) {
-					log_message("All variants of patch1 failed. Exiting.");
-					return EXIT_FAILURE;
-				}
-			}
-			
-			log_message("Successfully applied a variant of patch1");
-        }
-		
-		const char *libchromium_path = "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/libchromium.so";
-        {
-            unsigned char patch2_find[]    = { 0x02, 0x46, 0x20, 0x46, 0x29, 0x46, 0xff, 0xf7, 0xda, 0xff, 0x08, 0xb1 };
-            unsigned char patch2_replace[] = { 0x02, 0x46, 0x20, 0x46, 0x29, 0x46, 0xff, 0xf7, 0xda, 0xff, 0x00, 0xbf };
-			
-			if (sizeof(patch2_find) != sizeof(patch2_replace)) {
-				log_message("Failed to apply patch2, patch_find and patch_replace must be the same size");
-				return EXIT_FAILURE;
-			}
-			else if (apply_patch(libchromium_path, patch2_find, patch2_replace, sizeof(patch2_find)) != 0) {
-                log_message("Failed to apply patch2");
-				return EXIT_FAILURE;
-            }
-			
-			log_message("Successfully applied patch2");
-        }
-
-        /* 5a. Edit /mnt/us/extensions/kindle_browser_patch/patched_bin/browser to replace the string in question */
-        {
-            const char *sed_cmd =
-                "sed -i 's|exec chroot /chroot /usr/bin/chromium/bin/kindle_browser|"
-                "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser|g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser";
-            if (run_command(sed_cmd) != 0) {
-                log_message("Failed to update browser binary location in /mnt/us/extensions/kindle_browser_patch/patched_bin/browser");
-                return EXIT_FAILURE;
-            }
-        }
-		
-		/* 5b. Edit /mnt/us/extensions/kindle_browser_patch/patched_bin/browser to replace the string in question. This one applies to the Scribe on 5.17.3 */
-        {
-            const char *sed_cmd =
-                "sed -i 's|exec /usr/bin/chromium/bin/kindle_browser|"
-                "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser|g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser";
-            if (run_command(sed_cmd) != 0) {
-                log_message("Failed to update browser binary location in /mnt/us/extensions/kindle_browser_patch/patched_bin/browser");
-                return EXIT_FAILURE;
-            }
-        }
-		
-        /* 6. Check the sqlite3 database value */
-        {
-            char db_value[256] = {0};
-            const char *sql_query =
-                "sqlite3 /var/local/appreg.db \"SELECT value FROM properties "
-                "WHERE handlerId='com.lab126.browser' AND name='command';\"";
-            if (run_command_capture(sql_query, db_value, sizeof(db_value)) != 0) {
-                log_message("Failed to query sqlite3 database");
-                return EXIT_FAILURE;
-            }
-            if (strcmp(db_value, "/usr/bin/browser -j") != 0) {
-                log_message("Database check failed: expected '/usr/bin/browser -j', got '%s'", db_value);
-                return EXIT_FAILURE;
-            }
-        }
-
-        /* 7. Update the sqlite3 database value */
-        {
-            const char *sql_update =
-                "sqlite3 /var/local/appreg.db \"UPDATE properties SET value='/mnt/us/extensions/kindle_browser_patch/patched_bin/browser -j' "
-                "WHERE handlerId='com.lab126.browser' AND name='command';\"";
-            if (run_command(sql_update) != 0) {
-                log_message("Failed to update sqlite3 database");
-                return EXIT_FAILURE;
-            }
-        }
-
-        /* 8. Create an empty file at /mnt/us/extensions/kindle_browser_patch/installed */
-        {
-            FILE *f_inst = fopen("/mnt/us/extensions/kindle_browser_patch/installed", "w");
-            if (!f_inst) {
-                log_message("Failed to create /mnt/us/extensions/kindle_browser_patch/installed: %s", strerror(errno));
-                return EXIT_FAILURE;
-            }
-            fclose(f_inst);
-            log_message("Created empty file /mnt/us/extensions/kindle_browser_patch/installed");
-        }
-
-        /* 9. Run the lipc-set-prop command */
-        if (run_command("lipc-set-prop com.lab126.appmgrd start app://com.lab126.browser") != 0) {
-            log_message("Failed to run lipc-set-prop command");
-            return EXIT_FAILURE;
-        }
-
-        log_message("Installation completed successfully");
+    if (strcmp(actual_path, "/mnt/us/extensions/kindle_browser_patch/bin/kindle_browser_patch") != 0) {
+        // Path does not match, print error and exit
+        log_message("Aborting install: the extension was not installed to the correct path. Please ensure it is located at /mnt/us/extensions/kindle_browser_patch");
+        return -1;
     }
-    else if (strcmp(argv[1], "uninstall") == 0) {
-        log_message("Starting uninstallation process");
-
-		/* Check if the installed file exists */
-		int installed_file_exists = (access("/mnt/us/extensions/kindle_browser_patch/installed", F_OK) == 0);
-		
-		/* Check the sqlite3 database value if the installed file is not present */
-		int db_value_valid = 0;
-		if (!installed_file_exists) {
-			char db_value[256] = {0};
-			const char *sql_query =
-				"sqlite3 /var/local/appreg.db \"SELECT value FROM properties "
-				"WHERE handlerId='com.lab126.browser' AND name='command';\"";
-			if (run_command_capture(sql_query, db_value, sizeof(db_value)) == 0) {
-				if (strcmp(db_value, "/mnt/us/extensions/kindle_browser_patch/patched_bin/browser -j") == 0) {
-					db_value_valid = 1;
-				}
-			}
-		}
-
-		/* Proceed only if either the file exists or the DB value is valid */
-		if (!installed_file_exists && !db_value_valid) {
-			log_message("Uninstall failed: it does not appear that the patch was installed in the first place");
-			return EXIT_FAILURE;
-		}
-
-        /* 2. Reset the sqlite3 database value */
-        {
-            const char *sql_update =
-                "sqlite3 /var/local/appreg.db \"UPDATE properties SET value='/usr/bin/browser -j' "
-                "WHERE handlerId='com.lab126.browser' AND name='command';\"";
-            if (run_command(sql_update) != 0) {
-                log_message("Failed to update sqlite3 database during uninstallation");
-                return EXIT_FAILURE;
-            }
+    
+    if (strcmp(argv[1],"install")==0) {
+        const char *searchengine = (argc>=3) ? argv[2] : NULL;
+        int retcode = do_install(searchengine);
+        
+        if (retcode == 0) {
+            log_message("Successfully installed.");
+            sleep(10);
+            system("eips 30 30 \"Successfully installed\"");
         }
-
-        /* 3. Delete the file /mnt/us/extensions/kindle_browser_patch/installed */
-        if (remove("/mnt/us/extensions/kindle_browser_patch/installed") != 0) {
-            log_message("Failed to delete /mnt/us/extensions/kindle_browser_patch/installed: %s", strerror(errno));
-            return EXIT_FAILURE;
+        else {
+            log_message("Failed to install");
         }
-        log_message("Deleted file /mnt/us/extensions/kindle_browser_patch/installed");
-		
-	   /* 4. Delete the folder /mnt/us/extensions/kindle_browser_patch/patched_bin */
-        if (run_command("rm -rf /mnt/us/extensions/kindle_browser_patch/patched_bin") != 0) {
-            log_message("Failed to remove /mnt/us/extensions/kindle_browser_patch/patched_bin");
-            return EXIT_FAILURE;
+        
+        return retcode;
+    }
+    else if (strcmp(argv[1],"uninstall")==0) {
+        int retcode = do_uninstall();
+        
+        if (retcode == 0) {
+            log_message("Successfully uninstalled.");
         }
-        log_message("Deleted folder /mnt/us/extensions/kindle_browser_patch/patched_bin");
-        log_message("Uninstallation completed successfully");
+        else {
+            log_message("Failed to uninstall");
+        }
+        
+        return retcode;
     }
     else {
-        print_usage(argv[0]);
-        return EXIT_FAILURE;
+        fprintf(stderr,"Unknown command\n");
+        return 1;
     }
-
-    return EXIT_SUCCESS;
 }
 

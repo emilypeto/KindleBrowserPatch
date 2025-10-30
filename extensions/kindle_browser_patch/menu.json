@@ -5,9 +5,27 @@
 		"priority": -998,
 		"items": [
 		{
-            "name": "Install", 
+            "name": "Install (Google)", 
             "priority": 1, 
             "action": "bin/kindle_browser_patch install",
+            "exitmenu": true
+		},
+		{
+            "name": "Install (DuckDuckGo)", 
+            "priority": 2, 
+            "action": "bin/kindle_browser_patch install duckduckgo",
+            "exitmenu": true
+		},
+		{
+            "name": "Install (FrogFind)", 
+            "priority": 3, 
+            "action": "bin/kindle_browser_patch install frogfind",
+            "exitmenu": true
+		},
+		{
+            "name": "Install (Bing)", 
+            "priority": 4, 
+            "action": "bin/kindle_browser_patch install bing",
             "exitmenu": true
 		},
 		{

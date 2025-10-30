@@ -92,6 +92,25 @@ static int apply_patch(const char *filepath, const unsigned char *find, const un
     return 0;
 }
 
+/* ---------------- Path discovery helper ---------------- */
+/* Try a list of candidate relative paths under the patched_bin root and
+   return the first one that exists. out must be PATH_MAX sized. */
+static int locate_candidate(const char *root, const char *candidates[], size_t n, char *out, size_t outlen) {
+    for (size_t i = 0; i < n; ++i) {
+        if (snprintf(out, outlen, "%s/%s", root, candidates[i]) >= (int)outlen) {
+            /* path would be truncated; skip */
+            continue;
+        }
+        if (access(out, F_OK) == 0) {
+            /* found */
+            return 0;
+        }
+    }
+    /* not found */
+    return -1;
+}
+
+
 /* ---------------- Installation ---------------- */
 static int do_install(const char *searchengine) {
     log_message("Starting installation");
@@ -115,12 +134,41 @@ static int do_install(const char *searchengine) {
     if (run_command("cp -r /usr/bin/chromium /mnt/us/extensions/kindle_browser_patch/patched_bin/") != 0) {
         return -1;
     }
+    
+    log_message("Locating kindle_browser and libchromium.so...");
+
+    const char *chromium_root = "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium";
+    char kb_path[PATH_MAX];
+    char libchromium_path[PATH_MAX];
+
+    /* Candidate locations relative to chromium_root */
+    const char *kb_candidates[] = {
+        "bin/kindle_browser",
+        "kindle_browser"
+    };
+    const char *lib_candidates[] = {
+        "bin/libchromium.so",
+        "libchromium.so"
+    };
+
+    if (locate_candidate(chromium_root, kb_candidates, sizeof(kb_candidates)/sizeof(kb_candidates[0]),
+                         kb_path, sizeof(kb_path)) != 0) {
+        log_message("Could not find kindle_browser in expected locations under %s", chromium_root);
+        return -1;
+    }
+    log_message("Found kindle_browser at %s", kb_path);
+
+    if (locate_candidate(chromium_root, lib_candidates, sizeof(lib_candidates)/sizeof(lib_candidates[0]),
+                         libchromium_path, sizeof(libchromium_path)) != 0) {
+        log_message("Could not find libchromium.so in expected locations under %s", chromium_root);
+        return -1;
+    }
+    log_message("Found libchromium.so at %s", libchromium_path);
 
     /* Apply the first patch to kindle_browser (handles different models/firmwares) */
     {
         log_message("Patching kindle_browser...");
         
-        const char *kb_path = "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser";
         int patch_applied = 0;
 
         /* Variant A */
@@ -165,7 +213,7 @@ static int do_install(const char *searchengine) {
             log_message("libchromium.so patch error: patch length does not match original bytes.");
             return -1;
         }
-        if(apply_patch("/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/libchromium.so", find, replace, sizeof(find)) != 0) {
+        if(apply_patch(libchromium_path, find, replace, sizeof(find)) != 0) {
             log_message("Failed to apply patch to libchromium.so, aborting install");
             return -1;
         }
@@ -185,7 +233,7 @@ static int do_install(const char *searchengine) {
                 log_message("Search engine patch error: replacement string length does not match original.");
                 return -1;
             }
-            if (apply_patch("/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser",
+            if (apply_patch(kb_path,
                         (unsigned char*)find_str,
                         (unsigned char*)replace_str,
                         strlen("https://www.google.com/search?q=")) != 0) {
@@ -202,6 +250,11 @@ static int do_install(const char *searchengine) {
     
     if (run_command("sed -i 's|/usr/bin/chromium/bin/kindle_browser|"
                     "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser|g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
+        return -1;
+    }
+    
+    if (run_command("sed -i 's|/usr/bin/chromium/kindle_browser|"
+                    "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/kindle_browser|g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
         return -1;
     }
 

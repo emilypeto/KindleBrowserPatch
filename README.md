@@ -2,7 +2,7 @@
 This is a patch for the built-in web browser on Kindle devices. It provides the following features:
 - Remove the restriction on what kind of filetypes you can download (downloads are found in `/mnt/us/documents`)
 - Remove the restriction on what protocols you can browse, enabling the use of `file://`
-- Option to change search engine to DuckDuckGo, FrogFind or Bing
+- Option to change the search engine to DuckDuckGo, FrogFind or Bing
 
 It likely works on all Kindle devices running firmware >= 5.16.4. In any case, there is very little risk in giving it a try. Please edit this README if you get it working on your device.
 
@@ -20,7 +20,7 @@ Prerequisites:
 - KUAL
 
 Method:
-1. Download the [latest release](https://github.com/emilypeto/KindleBrowserPatch/releases/download/v1.0.4/kindle_browser_patch-1.0.4-armhf.zip) and extract it to `/mnt/us/extensions` on your Kindle, such that you now have a folder at `/mnt/us/extensions/kindle_browser_patch`. It must be named exactly this or it won't install.
+1. Download the [latest release](https://github.com/emilypeto/KindleBrowserPatch/releases/download/v2.0.0/kindle_browser_patch-2.0.0-armhf.zip) and extract it to `/mnt/us/extensions` on your Kindle, such that you now have a folder at `/mnt/us/extensions/kindle_browser_patch`. It must be named exactly this or it won't install.
 2. Open KUAL and select Kindle Browser Patch --> Install, selecting the search engine of your choice
 3. Don't touch anything while it installs. You will see log messages at the top of the screen.
 4. If the patch succeeds, the browser will open and you can test it out. Otherwise, you will see a message saying `Failed to install` at the top of the screen. If this is the case, proceed to the Troubleshooting section below. There is no harm to your device.

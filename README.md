@@ -45,3 +45,9 @@ Build [koxtoolchain](https://github.com/koreader/koxtoolchain) for the `kindlehf
 ## Technical explanation
 Please see [this post](https://www.mobileread.com/forums/showpost.php?p=4495677&postcount=7) and [this post](https://www.mobileread.com/forums/showpost.php?p=4546095&postcount=18) on the MobileRead forums.
 
+## Notes
+The ability to change search engines is intended to remedy the issue of Google search not working on Kindle. Google ended support for older browsers, leaving many users with the following error message:
+```
+Update your browser
+Your browser isn't supported anymore. To continue your search, upgrade to a recent version.
+```

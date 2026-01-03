@@ -46,6 +46,22 @@ static int run_command(const char *cmd) {
     return rc;
 }
 
+/* ---------------- File hash helper ---------------- */
+static unsigned long get_file_hash(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    
+    unsigned long hash = 5381; /* DJB2 hash start */
+    int c;
+    
+    while ((c = fgetc(f)) != EOF) {
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    }
+    
+    fclose(f);
+    return hash;
+}
+
 /* ---------------- Binary patching ---------------- */
 static int apply_patch(const char *filepath, const unsigned char *find, const unsigned char *replace, size_t len) {
     FILE *f = fopen(filepath, "rb+");
@@ -116,28 +132,19 @@ static int do_install(const char *searchengine) {
     log_message("Starting installation");
 
     /* Clean old logs */
-    run_command("rm -rf /mnt/us/extensions/kindle_browser_patch/install.log");
-
-    /* Ensure patched_bin exists cleanly */
-    run_command("rm -rf /mnt/us/extensions/kindle_browser_patch/patched_bin");
+    run_command("rm -f /mnt/us/extensions/kindle_browser_patch/install.log");
+    
+    /* Clean old tmp dir */
+    run_command("rm -rf /tmp/kindle_browser_patch");
     
     if (mkdir("/mnt/us/extensions/kindle_browser_patch/patched_bin", 0755) != 0 && errno != EEXIST) {
         log_message("Failed to create directory: %s", strerror(errno));
         return -1;
     }
-
-    /* Copy the original binaries */
-    if (run_command("cp /usr/bin/browser /mnt/us/extensions/kindle_browser_patch/patched_bin/") != 0) {
-        return -1;
-    }
-    
-    if (run_command("cp -r /usr/bin/chromium /mnt/us/extensions/kindle_browser_patch/patched_bin/") != 0) {
-        return -1;
-    }
     
     log_message("Locating kindle_browser and libchromium.so...");
 
-    const char *chromium_root = "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium";
+    const char *chromium_root = "/usr/bin/chromium";
     char kb_path[PATH_MAX];
     char libchromium_path[PATH_MAX];
 
@@ -165,6 +172,27 @@ static int do_install(const char *searchengine) {
     }
     log_message("Found libchromium.so at %s", libchromium_path);
 
+    /* Copy the files we need to patch */
+    if (run_command("cp -f /usr/bin/browser /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
+        return -1;
+    }
+    
+    char cp_command_buf[PATH_MAX + 61]; // extra space for the rest of the command
+    snprintf(cp_command_buf, sizeof(cp_command_buf), "cp -f %s /mnt/us/extensions/kindle_browser_patch/patched_bin/kindle_browser", kb_path);
+    
+    if (run_command(cp_command_buf) != 0) {
+        return -1;
+    }
+    
+    snprintf(cp_command_buf, sizeof(cp_command_buf), "cp -f %s /mnt/us/extensions/kindle_browser_patch/patched_bin/libchromium.so", libchromium_path);
+    
+    if (run_command(cp_command_buf) != 0) {
+        return -1;
+    }
+    
+    const char kb_path_new[] = "/mnt/us/extensions/kindle_browser_patch/patched_bin/kindle_browser";
+    const char libchromium_path_new[] = "/mnt/us/extensions/kindle_browser_patch/patched_bin/libchromium.so";
+
     /* Apply the first patch to kindle_browser (handles different models/firmwares) */
     {
         log_message("Patching kindle_browser...");
@@ -178,7 +206,7 @@ static int do_install(const char *searchengine) {
             log_message("kindle_browser patch A error: patch length does not match original bytes.");
             return -1;
         }
-        if (apply_patch(kb_path, findA, replaceA, sizeof(findA)) == 0) {
+        if (apply_patch(kb_path_new, findA, replaceA, sizeof(findA)) == 0) {
             patch_applied = 1;
             log_message("Applied patch variant A to kindle_browser");
         }
@@ -191,7 +219,7 @@ static int do_install(const char *searchengine) {
                 log_message("kindle_browser patch B error: patch length does not match original bytes.");
                 return -1;
             }
-            if (apply_patch(kb_path, findB, replaceB, sizeof(findB)) == 0) {
+            if (apply_patch(kb_path_new, findB, replaceB, sizeof(findB)) == 0) {
                 patch_applied = 1;
                 log_message("Applied patch variant B to kindle_browser");
             }
@@ -213,7 +241,7 @@ static int do_install(const char *searchengine) {
             log_message("libchromium.so patch error: patch length does not match original bytes.");
             return -1;
         }
-        if(apply_patch(libchromium_path, find, replace, sizeof(find)) != 0) {
+        if(apply_patch(libchromium_path_new, find, replace, sizeof(find)) != 0) {
             log_message("Failed to apply patch to libchromium.so, aborting install");
             return -1;
         }
@@ -233,7 +261,7 @@ static int do_install(const char *searchengine) {
                 log_message("Search engine patch error: replacement string length does not match original.");
                 return -1;
             }
-            if (apply_patch(kb_path,
+            if (apply_patch(kb_path_new,
                         (unsigned char*)find_str,
                         (unsigned char*)replace_str,
                         strlen("https://www.google.com/search?q=")) != 0) {
@@ -242,19 +270,36 @@ static int do_install(const char *searchengine) {
             }
         }
     }
-
+    
     /* Update the /browser script to exec the patched kindle_browser (which doesn't work in a chroot) */
     if (run_command("sed -i 's|chroot /chroot ||g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
         return -1;
     }
     
-    if (run_command("sed -i 's|/usr/bin/chromium/bin/kindle_browser|"
-                    "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/bin/kindle_browser|g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
-        return -1;
-    }
+    /* Calculate hash of the patched binary to enable caching it in /tmp, so we don't have to cp it every time */
+    /* The hash is intended to prevent relying on a cached file from an outdated version of the patch, which would effectively prevent updates */
+    unsigned long kb_hash = get_file_hash(kb_path_new);
+    log_message("Patched kindle_browser hash: %lx", kb_hash);
     
-    if (run_command("sed -i 's|/usr/bin/chromium/kindle_browser|"
-                    "/mnt/us/extensions/kindle_browser_patch/patched_bin/chromium/kindle_browser|g' /mnt/us/extensions/kindle_browser_patch/patched_bin/browser") != 0) {
+    char sed_command_buf[2048];
+    snprintf(sed_command_buf, sizeof(sed_command_buf), /* 1 */ "sed -i 's@exec %s@"
+                                                       /* 2 */ "mkdir -p /tmp/kindle_browser_patch/staging/usr/bin \\&\\& "
+                                                       /* 3 */ "cp -rs /usr/bin/chromium /tmp/kindle_browser_patch/staging/usr/bin \\&\\& "
+                                                       /* 4 */ "rm /tmp/kindle_browser_patch/staging%s \\&\\& "
+                                                       /* 5 */ "rm /tmp/kindle_browser_patch/staging%s \\&\\& "
+                                                       /* 6 */ "([ -f /tmp/kindle_browser_patch/staging%s_%lx ] || cp /mnt/us/extensions/kindle_browser_patch/patched_bin/kindle_browser /tmp/kindle_browser_patch/staging%s_%lx) \\&\\& "
+                                                       /* 7 */ "ln -s /mnt/us/extensions/kindle_browser_patch/patched_bin/libchromium.so /tmp/kindle_browser_patch/staging%s \\&\\& "
+                                                       /* 8 */ "exec /tmp/kindle_browser_patch/staging%s_%lx@g' "
+                                                       /* 9 */ "/mnt/us/extensions/kindle_browser_patch/patched_bin/browser",
+                                                       /* 1 */ kb_path,
+                                                       /* 4 */ kb_path,
+                                                       /* 5 */ libchromium_path,
+                                                       /* 6 */ kb_path, kb_hash, kb_path, kb_hash,
+                                                       /* 7 */ libchromium_path,
+                                                       /* 8 */ kb_path, kb_hash
+                                                        );
+    
+    if (run_command(sed_command_buf) != 0) {
         return -1;
     }
 

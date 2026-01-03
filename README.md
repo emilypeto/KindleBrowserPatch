@@ -6,13 +6,16 @@ This is a patch for the built-in web browser on Kindle devices. It provides the 
 
 It likely works on all Kindle devices running firmware >= 5.16.4. In any case, there is very little risk in giving it a try. Please edit this README if you get it working on your device.
 
-Known working devices:
+Known working:
 - KS (5.18.5.0.1 && 5.17.3)
 - PW6 (5.18.1)
 - PW5 (5.17.0)
 - PW4 (5.17.1.0.3)
 - KT5 (5.17.1.0.3)
 - KOA3 (5.17.1.0.3)
+
+Known unsupported:
+- PW5 (5.16.5) // This specific firmware version uses the old browser for some reason
 
 ## Installation
 Prerequisites:

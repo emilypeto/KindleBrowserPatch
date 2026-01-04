@@ -4,7 +4,7 @@ This is a patch for the built-in web browser on Kindle devices. It provides the 
 - Remove the restriction on what protocols you can browse, enabling the use of `file://`
 - Option to change the search engine to DuckDuckGo, FrogFind or Bing. The text still says "Search with Google", but in reality the search engine will change.
 
-It likely works on all Kindle devices running firmware >= 5.16.4. In any case, there is very little risk in giving it a try. Please edit this README if you get it working on your device.
+It THEORETICALLY works on all Kindle devices running firmware >= 5.16.4. In any case, there is very little risk in giving it a try. Please edit this README if you get it working on your device.
 
 Known working:
 - KS (5.18.5.0.1 && 5.17.3)
